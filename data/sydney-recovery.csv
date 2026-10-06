@@ -1,4 +1,4 @@
-swim_site,region,long,lat,since,unsafe,n
+swim_site,region,long,lat,days_after_rain,unsafe,n
 Avalon Beach,Northern Sydney,151.332569,-33.635658,0,0.1,30
 Avalon Beach,Northern Sydney,151.332569,-33.635658,1,0.12121212121212122,33
 Avalon Beach,Northern Sydney,151.332569,-33.635658,2,0.024390243902439025,41

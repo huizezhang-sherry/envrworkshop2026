@@ -1,14 +1,15 @@
 ---
-title: "Glyph maps for spatio-temporal data in R"
-subtitle: "Seeing seasonality at every location with **sugarglider**, **cubble** and **GGally**"
+title: "Seeing space and time together: glyph maps in R"
+subtitle: "Line, interval and interactive glyph maps in ggplot2 with **cubble** and **sugarglider**"
 format:
   utposter-typst:
     keep-typ: false
 size: "48x36"          # inches, width x height (use "36x24" for 3 x 2 ft)
 num-columns: 4
-poster-authors: "Maliny Po^1^ · S. Nathan Yang^2^ · **H. Sherry Zhang**^3^ · Dianne Cook^1^"
+poster-authors: "Maliny Po^1^ · S. Nathan Yang^2^ · **H. Sherry Zhang**^3^ (hsherryzhang@utexas.edu) · Dianne Cook^1^"
 affiliations-line: "^1^Monash University  ^2^Duke University  ^3^The University of Texas at Austin"
-header-image: "figures/header-glyph.png"
+badge: "ENVR Workshop 2026 · Houston, Texas"
+header-image: "figures/header-logos.png"
 execute:
   echo: false
   warning: false
@@ -31,11 +32,10 @@ library(sugarglider)
 library(cubble)
 
 oz <- ozmaps::abs_ste
-world <- map_data("world")
 
 # UT Austin brand: burnt orange, charcoal + secondary blue / limestone / shade
 pal <- list(ink = "#333F48", accent = "#BF5700", teal = "#005F86",
-            sand = "#F8971F", base = "#ECEAE4", grid = "#9CADB7")
+            base = "#ECEAE4", grid = "#9CADB7")
 
 theme_poster <- function(base_size = 14) {
   theme_void(base_size = base_size) +
@@ -47,18 +47,6 @@ theme_poster <- function(base_size = 14) {
 }
 ```
 
-```{r}
-#| label: header-glyph
-# decorative glyph map for the header (referenced by `header-image` above)
-p_header <- aus_temp |>
-  ggplot(aes(x_major = long, y_major = lat, x_minor = month,
-             ymin_minor = tmin, ymax_minor = tmax)) +
-  geom_glyph_ribbon(fill = "white", colour = "white", alpha = 0.9) +
-  coord_fixed() +
-  theme_void()
-ggsave("figures/header-glyph.png", p_header, width = 3, height = 3,
-       dpi = 300, bg = "transparent")
-```
 
 
 ::: {.card accent="blue"}
@@ -83,7 +71,6 @@ cell_box <- function(...) annotate("rect",
   xmin = cell$long[1] - w / 2, xmax = cell$long[1] + w / 2,
   ymin = cell$lat[1] - h / 2, ymax = cell$lat[1] + h / 2, fill = NA, ...)
 nasa_thin <- nasa_ds |> filter(x %% 2 == 1, y %% 2 == 1)
-r11 <- function(v, rng = range(v)) 2 * (v - rng[1]) / diff(rng) - 1
 # simplified land outline (Natural Earth 1:110m, no country borders,
 # small islands dropped), shared by the faceted maps and the glyph map
 sf::sf_use_s2(FALSE)
@@ -114,8 +101,8 @@ nasa_ds |>
   facet_wrap(~panel, ncol = 6) +
   coord_sf(xlim = lim_x, ylim = lim_y, expand = FALSE) +
   theme_poster(11) +
-  theme(strip.text = element_text(size = 10, colour = pal$ink),
-        panel.spacing = unit(1, "pt"),
+  theme(strip.text = element_text(size = 13, colour = pal$ink),
+        panel.spacing = unit(6, "pt"),
         plot.margin = margin(0, 0, 0, 0),
         legend.margin = margin(2, 0, 0, 0),
         legend.key.height = unit(0.25, "cm"),
@@ -139,7 +126,7 @@ ggplot(cell, aes(as.Date(date), diff)) +
   scale_x_date(date_breaks = "6 months", date_labels = "%b %y") +
   scale_y_continuous(breaks = c(0, 5)) +
   labs(x = NULL, y = "temp. (K)") +
-  theme_bw(base_size = 10) +
+  theme_bw(base_size = 13) +
   theme(panel.grid.minor = element_blank(),
         panel.border = element_rect(colour = pal$accent, linewidth = 0.8),
         plot.background = element_rect(fill = "white", colour = NA))
@@ -147,12 +134,13 @@ ggplot(cell, aes(as.Date(date), diff)) +
 :::
 :::
 
-**Do this for every location** to get the full glyph map:
+**Do this for every location** to get the full glyph map
+(`GGally::glyphs()` computes the glyph coordinates):
 
 ```{r}
 #| label: nasa-glyph
 #| fig-width: 5.2
-#| fig-height: 4.3
+#| fig-height: 4.75
 ggplot(nasa_thin) +
   countries(fill = pal$base, linewidth = 0.2) +
   cell_box(colour = pal$accent, linewidth = 0.6) +
@@ -178,7 +166,7 @@ ggplot(nasa_thin) +
 :::
 
 ::: {.card}
-## [2023]{.yr} Four new ggplot2 aesthetics
+## [2024]{.yr} cubble: glyph maps in ggplot2
 
 **cubble** implements the glyph-map transformation in ggplot2 syntax:
 `geom_glyph()` takes the major and minor coordinates as four new
@@ -220,7 +208,7 @@ water_col <- c(Harbour = pal$accent, `Ocean beach` = pal$teal)
 #| label: aes-sketch
 #| fig-width: 5.6
 #| fig-height: 2.5
-role <- function(col) element_text(colour = col, face = "bold", size = 11)
+role <- function(col) element_text(colour = col, face = "bold", size = 13)
 # left: the map, where the spatial coordinates are the *major* axes
 p_major <- ggplot() +
   geom_sf(data = land, fill = pal$base, colour = NA) +
@@ -233,21 +221,21 @@ p_major <- ggplot() +
   scale_x_continuous(breaks = c(151.15, 151.25)) +
   scale_y_continuous(breaks = c(-33.95, -33.85)) +
   labs(x = "long  →  x_major", y = "lat  →  y_major") +
-  theme_bw(base_size = 10) +
+  theme_bw(base_size = 13) +
   theme(panel.grid = element_blank(),
         axis.title.x = role(pal$teal), axis.title.y = role(pal$teal),
         axis.text = element_text(colour = pal$teal),
         panel.border = element_rect(colour = pal$teal, linewidth = 0.8),
         plot.background = element_rect(fill = "white", colour = NA))
 # right: inside one glyph, where the temporal coordinates are the *minor* axes
-p_minor <- ggplot(site1, aes(since, unsafe)) +
+p_minor <- ggplot(site1, aes(days_after_rain, unsafe)) +
   geom_line(colour = pal$accent, linewidth = 0.8) +
   geom_point(colour = pal$accent, size = 1.2) +
   scale_x_continuous(breaks = 0:7) +
   scale_y_continuous(labels = scales::percent, limits = c(0, 1)) +
   labs(x = "days since rain  →  x_minor",
        y = "% unsafe  →  y_minor") +
-  theme_bw(base_size = 10) +
+  theme_bw(base_size = 13) +
   theme(panel.grid = element_blank(),
         axis.title.x = role(pal$accent), axis.title.y = role(pal$accent),
         axis.text = element_text(colour = pal$accent),
@@ -269,7 +257,8 @@ other layers. The key parts of the code (simplified):
 ```r
 ggplot(beach,
        aes(x_major = long, y_major = lat,
-           x_minor = days, y_minor = unsafe,
+           x_minor = days_after_rain,
+           y_minor = unsafe,
            colour = water)) +
   geom_sf(data = sydney, inherit.aes = FALSE) + # map
   geom_glyph_box(width = 0.028, height = 0.012) +
@@ -280,8 +269,8 @@ ggplot(beach,
 ```{r}
 #| label: cubble-map
 #| fig-width: 5.2
-#| fig-height: 5.6
-ggplot(rec, aes(x_major = long, y_major = lat, x_minor = since, y_minor = unsafe,
+#| fig-height: 5.9
+ggplot(rec, aes(x_major = long, y_major = lat, x_minor = days_after_rain, y_minor = unsafe,
                 colour = water, group = swim_site)) +
   geom_sf(data = land, fill = pal$base, colour = NA, inherit.aes = FALSE) +
   geom_glyph_box(width = gw, height = gh, colour = pal$grid, fill = "white",
@@ -308,134 +297,176 @@ ggplot(rec, aes(x_major = long, y_major = lat, x_minor = since, y_minor = unsafe
 :::
 
 ::: {.card accent="orange"}
-## [2026]{.yr} Multivariate glyphs
+## [2026]{.yr} sugarglider: interval segments
 
-A line glyph shows **one variable** over time, but many environmental
-summaries are **multivariate**: daily minimum *and* maximum, lower *and*
-upper quantiles, an estimate *and* its uncertainty. **sugarglider** adds
-aesthetics for a second minor variable, transformed the same way:
+A line glyph shows **one value** per time point. Many summaries are an
+**interval**: a lower and an upper value of the same measurement, such as
+the daily low and high, or the quietest and busiest month.
+**sugarglider** adds aesthetics for the two ends of the interval, which
+share one scale inside each glyph.
 
-$$
-\begin{aligned}
-y_{\min} &= y_{\text{major}} + \frac{h}{2}\,\tilde{y}_{\min,\text{minor}} \\
-y_{\max} &= y_{\text{major}} + \frac{h}{2}\,\tilde{y}_{\max,\text{minor}}
-\end{aligned}
-$$
 
-**Ribbons** fill the band between the two, here with a third variable,
-rainfall, as colour and an enlarged legend glyph to read the scale:
+**Segments** draw one bar per time point. Australian weather stations,
+monthly average daily low (bottom) to high (top), 2020
+[(`sugarglider::aus_temp`)]{.cite}:
 
 ```r
-aus_temp |>
-  ggplot(aes(x_major = long, y_major = lat,
-             x_minor = month,
-             ymin_minor = tmin,
-             ymax_minor = tmax)) +
-  add_glyph_boxes() + add_ref_lines() +
-  add_glyph_legend() +
-  geom_glyph_ribbon(aes(fill = prcp))
-```
-
-```{r}
-#| label: ribbon-map
-#| fig-width: 5.2
-#| fig-height: 4.1
-set.seed(28493)
-aus_temp |>
-  mutate(across(c(tmin, tmax), \(x) x / 10)) |>
-  group_by(id) |>
-  mutate(prcp = mean(prcp, na.rm = TRUE)) |>
-  ungroup() |>
-  ggplot(aes(x_major = long, y_major = lat, x_minor = month,
-             ymin_minor = tmin, ymax_minor = tmax)) +
-  geom_sf(data = oz, fill = pal$base, colour = "white", inherit.aes = FALSE) +
-  add_glyph_boxes(colour = pal$grid, linewidth = 0.2) +
-  sugarglider::add_ref_lines(colour = pal$grid, linewidth = 0.2) +
-  add_glyph_legend(fill = pal$teal, colour = pal$teal) +
-  geom_glyph_ribbon(aes(fill = prcp, colour = prcp)) +
-  scale_fill_gradient(low = "#9fdde2", high = "#005F86",
-                      aesthetics = c("fill", "colour"),
-                      name = "Mean monthly precipitation (mm/10)") +
-  coord_sf(xlim = c(112, 155)) +
-  theme_poster(14) +
-  theme(legend.key.width = unit(1.6, "cm"), legend.title.position = "top")
-```
-
-**Segments** draw one bar per time point from the same data:
-
-```r
-aus_temp |>
-  ggplot(aes(x_major = long, y_major = lat,
-             x_minor = month,
-             y_minor = tmin, yend_minor = tmax)) +
-  add_glyph_boxes() + add_ref_lines() +
-  geom_glyph_segment()
+ggplot(aus_temp, aes(x_major = long, y_major = lat,
+                     x_minor = month,
+                     y_minor = tmin, yend_minor = tmax)) +
+  add_glyph_boxes() + geom_glyph_segment()
 ```
 
 ```{r}
 #| label: segment-map
 #| fig-width: 5.2
-#| fig-height: 3.1
-aus_temp |>
-  mutate(across(c(tmin, tmax), \(x) x / 10)) |>
+#| fig-height: 4.75
+at <- aus_temp |> mutate(across(c(tmin, tmax), \(x) x / 10))  # tenths of °C -> °C
+pick <- c(ASN00014274 = "Top End (coast)", ASN00015602 = "Central Australia")
+sw <- 3.4; sh <- 2.2                              # glyph size (degrees)
+boxed <- at |> filter(id %in% names(pick)) |> distinct(id, long, lat)
+at |>
   ggplot(aes(x_major = long, y_major = lat, x_minor = month,
              y_minor = tmin, yend_minor = tmax)) +
   geom_sf(data = oz, fill = pal$base, colour = "white", inherit.aes = FALSE) +
-  add_glyph_boxes(colour = pal$grid, linewidth = 0.2) +
-  sugarglider::add_ref_lines(colour = pal$grid, linewidth = 0.2) +
-  geom_glyph_segment(colour = pal$accent, linewidth = 0.35) +
-  coord_sf(xlim = c(112, 155)) +
+  add_glyph_boxes(width = 3.4, height = 2.2, colour = pal$grid,
+                  fill = "white", alpha = 0.1, linewidth = 0.2) +
+  sugarglider::add_ref_lines(width = 3.4, height = 2.2, colour = pal$grid,
+                             linewidth = 0.2) +
+  geom_glyph_segment(width = 3.4, height = 2.2, colour = pal$accent,
+                     linewidth = 0.6) +
+  geom_rect(data = boxed, aes(xmin = long - sw / 2, xmax = long + sw / 2,
+                              ymin = lat - sh / 2, ymax = lat + sh / 2),
+            fill = NA, colour = pal$ink, linewidth = 0.9, inherit.aes = FALSE) +
+  coord_sf(xlim = c(111.5, 155.5), ylim = c(-44.5, -8.8), expand = FALSE) +
   theme_poster(14)
 ```
 
+The two boxed glyphs enlarged:
+
+```{r}
+#| label: segment-zoom
+#| fig-width: 5.4
+#| fig-height: 1.7
+at |> filter(id %in% names(pick)) |>
+  mutate(station = factor(pick[id], pick)) |>
+  ggplot(aes(month, xend = month, y = tmin, yend = tmax)) +
+  geom_segment(colour = pal$accent, linewidth = 1.6) +
+  facet_wrap(~station) +
+  scale_x_continuous(breaks = c(1, 4, 7, 10),
+                     labels = c("Jan", "Apr", "Jul", "Oct")) +
+  labs(x = NULL, y = "daily low–high (°C)") +
+  theme_bw(base_size = 13) +
+  theme(panel.grid.minor = element_blank(),
+        strip.background = element_blank(),
+        strip.text = element_text(face = "bold", colour = pal$ink),
+        panel.border = element_rect(colour = pal$ink, linewidth = 0.8),
+        plot.background = element_rect(fill = "white", colour = NA))
+```
+
 ::: {.takeaway}
-Wet tropical stations have narrow, flat bands; inland stations show wide
-daily ranges and deep winter dips.
-:::
-:::
-
-::: {.colbreak}
+The **Top End** stays between 22 and 33 °C all year, with only 4–5 °C
+between day and night. **Central Australia** swings from 3 °C winter
+nights to 39 °C summer days, with 14–18 °C between day and night.
 :::
 
-::: {.card}
-## Which one should I use?
-
-| | **GGally** | **cubble** | **sugarglider** |
-|:--|:--:|:--:|:--:|
-| Interface | `glyphs()` → data frame | ggplot2 layer | ggplot2 layer |
-| Glyph geometry | line | line | **ribbon, segment** |
-| Reference box & line | ✓ | ✓ | ✓ |
-| Global / local rescale | via `y_scale` | ✓ | ✓ |
-| Polar glyphs | ✓ | ✓ | – |
-| Glyph legend & theme | – | – | ✓ |
-| Spatio-temporal data structure | – | ✓ | via cubble |
-| Interactive (ggiraph, leaflet) | – | via crosstalk | ✓ |
 :::
 
 ::: {.card accent="blue"}
 ## Take-home
 
-1. A glyph map shows each site's **temporal shape** and the **spatial pattern** in one plot.
-2. If your summary is a **range** (min–max, quantiles, uncertainty), use
-   sugarglider's **ribbon** or **segment** glyphs.
-3. All three packages work with **ggplot2**, so you can add base maps, colour and
-   facets as usual.
+1. **Glyph maps show space and time together.** Each location's time
+   series is drawn where it belongs, so local patterns and their spatial
+   structure can be explored in a single plot during exploratory
+   analysis.
+2. **Glyph maps are now part of ggplot2.** cubble provides line glyphs
+   and sugarglider adds interval glyphs (segments and ribbons), and both
+   combine with base maps, scales, colour and facets like any other
+   layer.
+3. **Glyph maps can be interactive.** The same glyphs can be placed on a
+   leaflet map, so viewers can zoom into dense areas and look up
+   individual locations.
+:::
+
+::: {.colbreak}
+:::
+
+::: {.card accent="orange"}
+## [2026]{.yr} sugarglider: interval ribbons
+
+**Ribbons** fill the band between the lower and upper values. Melbourne
+train stations, hourly weekday passengers, 2023–24
+[(`sugarglider::train`)]{.cite}, on an interactive **leaflet** map. For
+each hour, the **lower edge** is the passenger count in the quietest
+month and the **upper edge** in the busiest month. Each station's glyph
+is saved as an image and added as a leaflet marker (simplified):
+
+```r
+glyph <- ggplot(station,
+  aes(x_major = long, y_major = lat, x_minor = hour,
+      ymin_minor = min_weekday, ymax_minor = max_weekday)) +
+  add_glyph_boxes() + geom_glyph_ribbon() + theme_void()
+ggsave("glyph.png", glyph, bg = "transparent")
+
+leaflet() |> addProviderTiles("Esri.WorldGrayCanvas") |>
+  addMarkers(lng, lat, label = name,
+             icon = makeIcon("glyph.png", 66, 44))
+```
+
+```{r}
+#| label: train-prep
+tr <- sugarglider::train |>
+  mutate(hr = as.numeric(substr(as.character(hour), 1, 2)))
+```
+
+All stations share one scale, so glyph height shows how busy a station
+is; zoom in to separate crowded glyphs and hover for station names:
+
+![](figures/leaflet-train.png){width=100%}
+
+The two boxed glyphs enlarged, with their own axes:
+
+```{r}
+#| label: train-zoom
+#| fig-width: 5.4
+#| fig-height: 1.8
+zoom <- tr |> filter(station_name %in% c("Melbourne Central", "South Yarra")) |>
+  mutate(station_name = factor(station_name,
+                               c("Melbourne Central", "South Yarra")))
+lab <- zoom |> filter(station_name == "Melbourne Central", hr == 14)
+ggplot(zoom, aes(hr, ymin = min_weekday, ymax = max_weekday)) +
+  geom_ribbon(fill = pal$teal, colour = pal$teal, alpha = 0.8) +
+  geom_text(data = lab, aes(x = hr, y = max_weekday, label = "busiest month"),
+            vjust = -0.6, size = 3.4, colour = pal$ink, inherit.aes = FALSE) +
+  geom_text(data = lab, aes(x = hr, y = min_weekday, label = "quietest month"),
+            vjust = 1.6, size = 3.4, colour = pal$ink, inherit.aes = FALSE) +
+  facet_wrap(~station_name, scales = "free_y") +
+  scale_y_continuous(expand = expansion(mult = c(0.3, 0.35))) +
+  scale_x_continuous(breaks = c(6, 12, 18, 23),
+                     labels = c("6am", "noon", "6pm", "11pm")) +
+  labs(x = NULL, y = "passengers/hr") +
+  theme_bw(base_size = 13) +
+  theme(panel.grid.minor = element_blank(),
+        strip.background = element_blank(),
+        strip.text = element_text(face = "bold", colour = pal$ink),
+        panel.border = element_rect(colour = pal$accent, linewidth = 0.8),
+        plot.background = element_rect(fill = "white", colour = NA))
+```
+
+::: {.takeaway}
+City Loop stations carry by far the most passengers. On their own axes,
+suburban stations such as **South Yarra** show two sharp **commuter
+peaks**, while **Melbourne Central** is as busy at midday as at the peaks.
+:::
 :::
 
 ::: {.card}
-## Get started
-
-```{r}
-#| eval: false
-#| echo: true
-install.packages(
-  c("sugarglider", "cubble", "GGally"))
-```
+**Questions?** Email **hsherryzhang\@utexas.edu**
 
 ```{r}
 #| label: qr
 #| fig-width: 5.2
-#| fig-height: 5.6
+#| fig-height: 1.7
 qr_plot <- function(url, label) {
   m <- qrcode::qr_code(url) |> unclass()
   df <- expand.grid(y = rev(seq_len(nrow(m))), x = seq_len(ncol(m)))
@@ -444,15 +475,15 @@ qr_plot <- function(url, label) {
     geom_tile(fill = pal$ink) +
     coord_fixed() +
     labs(title = label) +
-    theme_void(base_size = 16) +
+    theme_void(base_size = 11) +
     theme(plot.title = element_text(hjust = 0.5, face = "bold",
-                                    colour = pal$ink))
+                                    colour = pal$ink, lineheight = 0.9))
 }
-qr_plot("https://doi.org/10.32614/RJ-2026-050", "Paper") +
-  qr_plot("https://maliny12.github.io/sugarglider/", "sugarglider") +
-  qr_plot("https://huizezhang-sherry.github.io/cubble/", "cubble") +
-  qr_plot("https://ggobi.github.io/ggally/", "GGally") +
-  plot_layout(nrow = 2)
+qr_plot("https://doi.org/10.32614/RJ-2026-050", "sugarglider\npaper") +
+  qr_plot("https://maliny12.github.io/sugarglider/", "sugarglider\npackage") +
+  qr_plot("https://huizezhang-sherry.github.io/cubble/", "cubble\npackage") +
+  qr_plot("https://github.com/huizezhang-sherry/envrworkshop2026", "poster\ncode") +
+  plot_layout(nrow = 1)
 ```
 
 ```{=typst}
@@ -473,5 +504,5 @@ Po, Yang, Zhang & Cook (2026). sugarglider: Create glyph-maps of
 spatiotemporal data. *The R Journal* 18(3), 286–304.
 [doi:10.32614/RJ-2026-050](https://doi.org/10.32614/RJ-2026-050)
 
-Beach data: [TidyTuesday 2025-05-20](https://github.com/rfordatascience/tidytuesday/tree/main/data/2025/2025-05-20).
+Leaflet tiles: Esri. Beach data: [TidyTuesday 2025-05-20](https://github.com/rfordatascience/tidytuesday/tree/main/data/2025/2025-05-20).
 :::

@@ -101,7 +101,7 @@
     ))
     place(top + left, dy: header-height,
       rect(width: 100%, height: 0.16in, fill: ut-charcoal))
-    place(top + left, dx: margin, dy: 0.75in, block(width: width - 2 * margin - 6in, {
+    place(top + left, dx: margin, dy: 0.75in, block(width: width - 2 * margin - 10in, {
       set text(fill: white)
       text(size: 92pt, weight: 900, tracking: -1pt, title)
       if subtitle != none {
