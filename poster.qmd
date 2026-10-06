@@ -1,0 +1,440 @@
+---
+title: "Glyph maps for spatio-temporal data in R"
+subtitle: "Seeing seasonality at every location with **sugarglider**, **cubble** and **GGally**"
+format:
+  utposter-typst:
+    keep-typ: false
+size: "48x36"          # inches, width x height (use "36x24" for 3 x 2 ft)
+num-columns: 4
+poster-authors: "Maliny Po^1^ · S. Nathan Yang^2^ · **H. Sherry Zhang**^3^ · Dianne Cook^1^"
+affiliations-line: "^1^Monash University  ^2^Duke University  ^3^The University of Texas at Austin"
+header-image: "figures/header-glyph.png"
+execute:
+  echo: false
+  warning: false
+  message: false
+knitr:
+  opts_chunk:
+    dev: "png"
+    dpi: 300
+    fig.align: "center"
+    out.width: "100%"
+---
+
+```{r}
+#| label: setup
+library(ggplot2)
+library(dplyr)
+library(grid)          # sugarglider::add_glyph_legend() needs grid attached
+library(patchwork)
+library(sugarglider)
+library(cubble)
+
+oz <- ozmaps::abs_ste
+world <- map_data("world")
+
+# UT Austin brand: burnt orange, charcoal + secondary blue / limestone / shade
+pal <- list(ink = "#333F48", accent = "#BF5700", teal = "#005F86",
+            sand = "#F8971F", base = "#ECEAE4", grid = "#9CADB7")
+
+theme_poster <- function(base_size = 14) {
+  theme_void(base_size = base_size) +
+    theme(plot.background = element_rect(fill = "white", colour = NA),
+          plot.title = element_text(face = "bold", colour = pal$ink,
+                                    margin = margin(b = 6)),
+          plot.title.position = "plot",
+          legend.position = "bottom")
+}
+```
+
+```{r}
+#| label: header-glyph
+# decorative glyph map for the header (referenced by `header-image` above)
+p_header <- aus_temp |>
+  ggplot(aes(x_major = long, y_major = lat, x_minor = month,
+             ymin_minor = tmin, ymax_minor = tmax)) +
+  geom_glyph_ribbon(fill = "white", colour = "white", alpha = 0.9) +
+  coord_fixed() +
+  theme_void()
+ggsave("figures/header-glyph.png", p_header, width = 3, height = 3,
+       dpi = 300, bg = "transparent")
+```
+
+
+::: {.card accent="blue"}
+## [2012]{.yr} From facets to a glyph map
+
+Environmental data often come as **many time series at many locations**,
+commonly shown as maps faceted by time. Below, monthly de-seasonalised
+surface temperature over Central America for 1997–98.
+
+```{r}
+#| label: nasa-prep
+nasa_ds <- GGally::nasa |>
+  group_by(long, lat) |>
+  mutate(diff = residuals(lm(surftemp ~ year + factor(month)))) |>
+  ungroup()
+lim_x <- range(nasa_ds$long) + c(-1.3, 1.3)
+lim_y <- range(nasa_ds$lat) + c(-1.3, 1.3)
+w <- 4.4; h <- 3.6                                   # glyph size (degrees)
+nasa_ds <- nasa_ds |> filter(year %in% 1997:1998)    # the 24 panels shown
+cell <- nasa_ds |> filter(x == 7, y == 9)            # highlighted Pacific cell
+cell_box <- function(...) annotate("rect",
+  xmin = cell$long[1] - w / 2, xmax = cell$long[1] + w / 2,
+  ymin = cell$lat[1] - h / 2, ymax = cell$lat[1] + h / 2, fill = NA, ...)
+nasa_thin <- nasa_ds |> filter(x %% 2 == 1, y %% 2 == 1)
+r11 <- function(v, rng = range(v)) 2 * (v - rng[1]) / diff(rng) - 1
+# simplified land outline (Natural Earth 1:110m, no country borders,
+# small islands dropped), shared by the faceted maps and the glyph map
+sf::sf_use_s2(FALSE)
+land <- rnaturalearth::ne_countries(scale = 110, returnclass = "sf") |>
+  sf::st_union() |>
+  sf::st_crop(xmin = lim_x[1] - 5, xmax = lim_x[2] + 5,
+              ymin = lim_y[1] - 5, ymax = lim_y[2] + 5) |>
+  sf::st_cast("POLYGON") |>
+  sf::st_as_sf()
+land <- land[as.numeric(sf::st_area(land)) > 5e10, ]
+countries <- function(colour = "white", ...)
+  geom_sf(data = land, colour = colour, inherit.aes = FALSE, ...)
+```
+
+```{r}
+#| label: nasa-facet
+#| fig-width: 5.2
+#| fig-height: 4.7
+nasa_ds |>
+  mutate(panel = factor(format(date, "%b %y"),
+                        levels = unique(format(sort(date), "%b %y")))) |>
+  ggplot(aes(long, lat, fill = diff)) +
+  geom_tile() +
+  countries(fill = NA, colour = "grey25", linewidth = 0.3) +   # outline only: tiles cover land too
+  cell_box(colour = pal$ink, linewidth = 0.35) +
+  scale_fill_gradient2(low = pal$teal, mid = "white", high = pal$accent,
+                       name = "De-seasonalised temperature (K)") +
+  facet_wrap(~panel, ncol = 6) +
+  coord_sf(xlim = lim_x, ylim = lim_y, expand = FALSE) +
+  theme_poster(11) +
+  theme(strip.text = element_text(size = 10, colour = pal$ink),
+        panel.spacing = unit(2, "pt"),
+        legend.key.height = unit(0.25, "cm"),
+        legend.key.width = unit(1.4, "cm"),
+        legend.title.position = "top")
+```
+
+::: {.side-by-side}
+::: {}
+**Trace one location.** Follow the boxed cell through the 24 panels to
+get its time series. A **glyph map** draws that series as a small plot at
+the cell's location [(Wickham et al., 2012)]{.cite}.
+:::
+::: {}
+```{r}
+#| label: nasa-steps
+#| fig-width: 2.8
+#| fig-height: 1.5
+ggplot(cell, aes(as.Date(date), diff)) +
+  geom_line(colour = pal$ink, linewidth = 0.4) +
+  scale_x_date(date_breaks = "6 months", date_labels = "%b %y") +
+  scale_y_continuous(breaks = c(0, 5)) +
+  labs(x = NULL, y = "temp. (K)") +
+  theme_bw(base_size = 10) +
+  theme(panel.grid.minor = element_blank(),
+        panel.border = element_rect(colour = pal$accent, linewidth = 0.8),
+        plot.background = element_rect(fill = "white", colour = NA))
+```
+:::
+:::
+
+**Do this for every location** to get the full glyph map:
+
+```{r}
+#| label: nasa-glyph
+#| fig-width: 5.2
+#| fig-height: 5.0
+ggplot(nasa_thin) +
+  countries(fill = pal$base, linewidth = 0.2) +
+  cell_box(colour = pal$accent, linewidth = 0.6) +
+  geom_glyph(aes(x_major = long, y_major = lat, x_minor = time, y_minor = diff),
+             width = w, height = h, colour = pal$ink, linewidth = 0.3) +
+  coord_sf(xlim = lim_x, ylim = lim_y, expand = FALSE) +
+  theme_poster(12)
+```
+
+::: {.takeaway}
+**What the glyph map shows:**
+
+- Equatorial eastern Pacific glyphs share one hump peaking in late 1997
+  (the El Niño), fading away from the equator.
+- Glyphs over land vary far more month to month than those over the sea.
+:::
+:::
+
+::: {.colbreak}
+:::
+
+::: {.card}
+## [2023]{.yr} Four new ggplot2 aesthetics
+
+**`cubble::geom_glyph()`** moves the transformation inside a ggplot2 layer
+through **four new aesthetics**:
+
+- `x_major`, `y_major`: *where* each glyph goes
+- `x_minor`, `y_minor`: *what* each glyph draws
+
+Because it is an ordinary layer, glyphs combine with base maps, colour and
+facets, and `geom_glyph_box()` / `geom_glyph_line()` add reference frames.
+
+```r
+cb |>
+  ggplot(aes(x_major = long, y_major = lat,
+             x_minor = month, y_minor = tmax)) +
+  geom_glyph_box() + geom_glyph()
+```
+
+```{r}
+#| label: cubble-map
+#| fig-width: 5.2
+#| fig-height: 4.7
+set.seed(2026)
+picked <- climate_aus |>
+  as_tibble() |>
+  mutate(cell = paste(round(long / 4), round(lat / 3.2))) |>
+  group_by(cell) |>
+  slice_sample(n = 1) |>
+  pull(id)
+
+cb <- climate_aus |>
+  filter(id %in% picked) |>
+  face_temporal() |>
+  group_by(month = lubridate::month(date)) |>
+  summarise(tmax = mean(tmax, na.rm = TRUE)) |>
+  unfold(long, lat) |>
+  mutate(region = ifelse(lat > -25, "North of 25°S", "South of 25°S"))
+
+ggplot() +
+  geom_sf(data = oz, fill = pal$base, colour = "white") +
+  geom_glyph_box(data = cb, aes(x_major = long, x_minor = month,
+                                y_major = lat, y_minor = tmax, group = id),
+                 colour = pal$grid, linewidth = 0.2,
+                 width = 2.6, height = 1.8) +
+  geom_glyph_line(data = cb, aes(x_major = long, x_minor = month,
+                                 y_major = lat, y_minor = tmax, group = id),
+                  colour = pal$grid, linewidth = 0.2,
+                  width = 2.6, height = 1.8) +
+  geom_glyph(data = cb, aes(x_major = long, x_minor = month,
+                            y_major = lat, y_minor = tmax, colour = region,
+                            group = id),
+             width = 2.6, height = 1.8, linewidth = 0.5, key_glyph = "path") +
+  scale_colour_manual(values = c(pal$accent, pal$teal), name = NULL) +
+  guides(colour = guide_legend(override.aes = list(linewidth = 1.5))) +
+  coord_sf(xlim = c(112, 155)) +
+  theme_poster(14)
+```
+
+::: {.takeaway}
+Monthly average maximum temperature at about 90 stations. Southern stations
+swing strongly from summer to winter; northern stations stay hot all year.
+:::
+
+The **`global_rescale`** argument sets what the glyphs compare: one shared
+scale for **magnitude**, or each glyph's own range for **shape**.
+
+```{r}
+#| label: cubble-rescale
+#| fig-width: 5.2
+#| fig-height: 2.7
+gl <- function(global) {
+  ggplot() +
+    geom_sf(data = oz, fill = pal$base, colour = "white") +
+    geom_glyph_box(data = cb, aes(x_major = long, x_minor = month,
+                                  y_major = lat, y_minor = tmax),
+                   colour = pal$grid, linewidth = 0.15, width = 2.6, height = 1.8) +
+    # no `group`/discrete colour here: cubble 1.0.0 only rescales per glyph
+    # (global_rescale = FALSE) when the layer has a single group
+    geom_glyph(data = cb, aes(x_major = long, x_minor = month,
+                              y_major = lat, y_minor = tmax),
+               global_rescale = global, width = 2.6, height = 1.8,
+               colour = pal$ink, linewidth = 0.35) +
+    coord_sf(xlim = c(112, 155)) +
+    labs(title = paste0("global_rescale = ", global)) +
+    theme_poster(12)
+}
+gl(TRUE) + gl(FALSE)
+```
+
+::: {.caption}
+With a shared scale, northern glyphs look flat. With their own scale, every glyph fills its box and the small northern cycles become visible.
+:::
+:::
+
+::: {.colbreak}
+:::
+
+::: {.card accent="orange"}
+## [2026]{.yr} Multivariate glyphs
+
+A line glyph shows **one variable** over time, but many environmental
+summaries are **multivariate**: daily minimum *and* maximum, lower *and*
+upper quantiles, an estimate *and* its uncertainty. **sugarglider** adds
+aesthetics for a second minor variable, transformed the same way:
+
+$$
+\begin{aligned}
+y_{\min} &= y_{\text{major}} + \frac{h}{2}\,\tilde{y}_{\min,\text{minor}} \\
+y_{\max} &= y_{\text{major}} + \frac{h}{2}\,\tilde{y}_{\max,\text{minor}}
+\end{aligned}
+$$
+
+**Ribbons** fill the band between the two, here with a third variable,
+rainfall, as colour and an enlarged legend glyph to read the scale:
+
+```r
+aus_temp |>
+  ggplot(aes(x_major = long, y_major = lat,
+             x_minor = month,
+             ymin_minor = tmin,
+             ymax_minor = tmax)) +
+  add_glyph_boxes() + add_ref_lines() +
+  add_glyph_legend() +
+  geom_glyph_ribbon(aes(fill = prcp))
+```
+
+```{r}
+#| label: ribbon-map
+#| fig-width: 5.2
+#| fig-height: 4.1
+set.seed(28493)
+aus_temp |>
+  mutate(across(c(tmin, tmax), \(x) x / 10)) |>
+  group_by(id) |>
+  mutate(prcp = mean(prcp, na.rm = TRUE)) |>
+  ungroup() |>
+  ggplot(aes(x_major = long, y_major = lat, x_minor = month,
+             ymin_minor = tmin, ymax_minor = tmax)) +
+  geom_sf(data = oz, fill = pal$base, colour = "white", inherit.aes = FALSE) +
+  add_glyph_boxes(colour = pal$grid, linewidth = 0.2) +
+  sugarglider::add_ref_lines(colour = pal$grid, linewidth = 0.2) +
+  add_glyph_legend(fill = pal$teal, colour = pal$teal) +
+  geom_glyph_ribbon(aes(fill = prcp, colour = prcp)) +
+  scale_fill_gradient(low = "#9fdde2", high = "#005F86",
+                      aesthetics = c("fill", "colour"),
+                      name = "Mean monthly precipitation (mm/10)") +
+  coord_sf(xlim = c(112, 155)) +
+  theme_poster(14) +
+  theme(legend.key.width = unit(1.6, "cm"), legend.title.position = "top")
+```
+
+**Segments** draw one bar per time point from the same data:
+
+```r
+aus_temp |>
+  ggplot(aes(x_major = long, y_major = lat,
+             x_minor = month,
+             y_minor = tmin, yend_minor = tmax)) +
+  add_glyph_boxes() + add_ref_lines() +
+  geom_glyph_segment()
+```
+
+```{r}
+#| label: segment-map
+#| fig-width: 5.2
+#| fig-height: 3.1
+aus_temp |>
+  mutate(across(c(tmin, tmax), \(x) x / 10)) |>
+  ggplot(aes(x_major = long, y_major = lat, x_minor = month,
+             y_minor = tmin, yend_minor = tmax)) +
+  geom_sf(data = oz, fill = pal$base, colour = "white", inherit.aes = FALSE) +
+  add_glyph_boxes(colour = pal$grid, linewidth = 0.2) +
+  sugarglider::add_ref_lines(colour = pal$grid, linewidth = 0.2) +
+  geom_glyph_segment(colour = pal$accent, linewidth = 0.35) +
+  coord_sf(xlim = c(112, 155)) +
+  theme_poster(14)
+```
+
+::: {.takeaway}
+Wet tropical stations have narrow, flat bands; inland stations show wide
+daily ranges and deep winter dips.
+:::
+:::
+
+::: {.colbreak}
+:::
+
+::: {.card}
+## Which one should I use?
+
+| | **GGally** | **cubble** | **sugarglider** |
+|:--|:--:|:--:|:--:|
+| Interface | `glyphs()` → data frame | ggplot2 layer | ggplot2 layer |
+| Glyph geometry | line | line | **ribbon, segment** |
+| Reference box & line | ✓ | ✓ | ✓ |
+| Global / local rescale | via `y_scale` | ✓ | ✓ |
+| Polar glyphs | ✓ | ✓ | – |
+| Glyph legend & theme | – | – | ✓ |
+| Spatio-temporal data structure | – | ✓ | via cubble |
+| Interactive (ggiraph, leaflet) | – | via crosstalk | ✓ |
+:::
+
+::: {.card accent="blue"}
+## Take-home
+
+1. A glyph map shows each site's **temporal shape** and the **spatial pattern** in one plot.
+2. If your summary is a **range** (min–max, quantiles, uncertainty), use
+   sugarglider's **ribbon** or **segment** glyphs.
+3. Use **global** rescaling to compare magnitude across sites and **local**
+   rescaling to compare shape.
+4. All three packages work with **ggplot2**, so you can add base maps, colour and
+   facets as usual.
+:::
+
+::: {.card}
+## Get started
+
+```{r}
+#| eval: false
+#| echo: true
+install.packages(
+  c("sugarglider", "cubble", "GGally"))
+```
+
+```{r}
+#| label: qr
+#| fig-width: 5.2
+#| fig-height: 5.6
+qr_plot <- function(url, label) {
+  m <- qrcode::qr_code(url) |> unclass()
+  df <- expand.grid(y = rev(seq_len(nrow(m))), x = seq_len(ncol(m)))
+  df$on <- as.vector(m)
+  ggplot(df[df$on, ], aes(x, y)) +
+    geom_tile(fill = pal$ink) +
+    coord_fixed() +
+    labs(title = label) +
+    theme_void(base_size = 16) +
+    theme(plot.title = element_text(hjust = 0.5, face = "bold",
+                                    colour = pal$ink))
+}
+qr_plot("https://doi.org/10.32614/RJ-2026-050", "Paper") +
+  qr_plot("https://maliny12.github.io/sugarglider/", "sugarglider") +
+  qr_plot("https://huizezhang-sherry.github.io/cubble/", "cubble") +
+  qr_plot("https://ggobi.github.io/ggally/", "GGally") +
+  plot_layout(nrow = 2)
+```
+
+```{=typst}
+#set text(size: 19pt, fill: ut-muted)
+#set par(spacing: 0.5em)
+```
+
+Wickham, Hofmann, Wickham & Cook (2012). Glyph-maps for visually exploring
+temporal patterns in climate data and models. *Environmetrics* 23(5), 382–393.
+[doi:10.1002/env.2152](https://doi.org/10.1002/env.2152)
+
+Zhang, Cook, Laa, Langrené & Menéndez (2024). cubble: An R package for
+organizing and wrangling multivariate spatio-temporal data.
+*J. Stat. Softw.* 110(7).
+[doi:10.18637/jss.v110.i07](https://doi.org/10.18637/jss.v110.i07)
+
+Po, Yang, Zhang & Cook (2026). sugarglider: Create glyph-maps of
+spatiotemporal data. *The R Journal* 18(3), 286–304.
+[doi:10.32614/RJ-2026-050](https://doi.org/10.32614/RJ-2026-050)
+:::
