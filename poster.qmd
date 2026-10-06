@@ -30,6 +30,8 @@ library(grid)          # sugarglider::add_glyph_legend() needs grid attached
 library(patchwork)
 library(sugarglider)
 library(cubble)
+library(lubridate)
+knitr::read_chunk("script.R")   # beach-data, beach-select
 
 oz <- ozmaps::abs_ste
 
@@ -44,6 +46,20 @@ theme_poster <- function(base_size = 14) {
                                     margin = margin(b = 6)),
           plot.title.position = "plot",
           legend.position = "bottom")
+}
+```
+
+```{=typst}
+// hl(...words)[code]: highlight the given words inside a code block
+#let hl(..words, body) = {
+  set par(leading: 0.6em)              // a little more room between code lines
+  show raw: it => {
+    show regex("\\b(" + words.pos().join("|") + ")\\b"): w => box(
+      fill: rgb("#f9d3b4"), radius: 5pt, outset: (x: 2pt, top: 4pt, bottom: 6pt),
+      text(weight: "bold", w))
+    it
+  }
+  body
 }
 ```
 
@@ -128,7 +144,6 @@ ggplot(cell, aes(as.Date(date), diff)) +
   labs(x = NULL, y = "temp. (K)") +
   theme_bw(base_size = 13) +
   theme(panel.grid.minor = element_blank(),
-        panel.border = element_rect(colour = pal$accent, linewidth = 0.8),
         plot.background = element_rect(fill = "white", colour = NA))
 ```
 :::
@@ -147,7 +162,8 @@ ggplot(nasa_thin) +
   geom_glyph(aes(x_major = long, y_major = lat, x_minor = time, y_minor = diff),
              width = w, height = h, colour = pal$ink, linewidth = 0.3) +
   coord_sf(xlim = lim_x, ylim = lim_y, expand = FALSE) +
-  theme_poster(12)
+  theme_poster(12) +
+  theme(panel.background = element_rect(fill = "#e8f3ff", colour = NA))  # sea
 ```
 
 
@@ -166,130 +182,121 @@ ggplot(nasa_thin) +
 :::
 
 ::: {.card}
-## [2024]{.yr} cubble: glyph maps in ggplot2
+## [2024]{.yr} `cubble`: glyph maps in ggplot2
 
-**cubble** implements the glyph-map transformation in ggplot2 syntax:
-`geom_glyph()` takes the major and minor coordinates as four new
-**aesthetics**, so making a glyph map is a matter of mapping your
-variables onto them. Here: **how long after a storm is it safe to swim
-in Sydney?** Share of water samples above the bacteria guideline
-(40 enterococci/100 mL) in the 7 days after ≥ 20 mm of rain, 1993–2025
+ **how long after a storm is it safe to swim in Sydney?** 
+ 
+ Each water sample (2015–2025) is matched to the most recent day with ≥ 20 mm of rain (a "very heavy rain" day in the ETCCDI climate-extremes indices), giving the number of days since rain when it was taken (0–6). For each site and each day, we take the percentage of samples above the bacteria guideline: 40 enterococci/100 mL, the limit for the best water-quality grade in Australia's recreational-water guidelines [(NHMRC, 2008)]{.cite}
 [(TidyTuesday 2025-05-20)]{.cite}.
 
-```{r}
-#| label: syd-prep
-sf::sf_use_s2(FALSE)
-rec <- readr::read_csv("data/sydney-recovery.csv", show_col_types = FALSE) |>
-  filter(lat > -33.99, lat < -33.74, long > 151.1) |>
-  group_by(swim_site) |> filter(sum(n) >= 80) |> ungroup()
-# keep sites whose glyph boxes don't overlap (busiest sites first)
-gw <- 0.028; gh <- 0.012                           # glyph size (degrees)
-sites <- rec |> group_by(swim_site, region, long, lat) |>
-  summarise(n = sum(n), .groups = "drop") |>
-  arrange(desc(swim_site == "Tambourine Bay"), desc(n))  # sketch site first
-keep <- integer(0)
-for (i in seq_len(nrow(sites))) {
-  clear <- abs(sites$long[i] - sites$long[keep]) > gw * 0.98 |
-           abs(sites$lat[i] - sites$lat[keep]) > gh * 1.05
-  if (all(clear)) keep <- c(keep, i)
-}
-rec <- rec |> filter(swim_site %in% sites$swim_site[keep]) |>
-  mutate(water = ifelse(region == "Sydney Harbour", "Harbour", "Ocean beach"))
-land <- ozmaps::abs_lga |> sf::st_union() |>       # council boundaries keep the harbour
-  sf::st_crop(xmin = 151.0, xmax = 151.4, ymin = -34.1, ymax = -33.65)
-xl <- c(151.10, 151.33); yl <- c(-34.0, -33.73)  # glyph map
-xs <- c(151.10, 151.31); ys <- c(-33.99, -33.77)  # sketch
-site1 <- rec |> filter(swim_site == "Tambourine Bay")
-cx <- site1$long[1]; cy <- site1$lat[1]
-water_col <- c(Harbour = pal$accent, `Ocean beach` = pal$teal)
+```{r beach-data}
+```
+
+```{r beach-select}
 ```
 
 ```{r}
-#| label: aes-sketch
+#| label: syd-extras
+eg <- beach |> filter(swim_site %in% c("Tambourine Bay", "Bondi Beach"))
+water_col <- c(`Inner harbour` = pal$accent, `Ocean & outer harbour` = pal$teal)
+```
+
+```{r}
+#| label: glyph-read
 #| fig-width: 5.6
-#| fig-height: 2.5
-role <- function(col) element_text(colour = col, face = "bold", size = 13)
-# left: the map, where the spatial coordinates are the *major* axes
-p_major <- ggplot() +
-  geom_sf(data = land, fill = pal$base, colour = NA) +
-  annotate("rect", xmin = cx - gw / 2, xmax = cx + gw / 2,
-           ymin = cy - gh / 2, ymax = cy + gh / 2,
-           fill = NA, colour = pal$ink, linewidth = 0.7) +
-  annotate("text", x = cx + gw / 2 + 0.004, y = cy + 0.014, label = "Tambourine\nBay",
-           hjust = 0, size = 3, fontface = "bold", colour = pal$ink, lineheight = 0.9) +
-  coord_sf(xlim = xs, ylim = ys, expand = FALSE) +
-  scale_x_continuous(breaks = c(151.15, 151.25)) +
-  scale_y_continuous(breaks = c(-33.95, -33.85)) +
-  labs(x = "long  →  x_major", y = "lat  →  y_major") +
+#| fig-height: 2.2
+pt <- function(site, day, dy) {
+  d <- filter(eg, swim_site == site, days_after_rain == day)
+  annotate("text", x = d$days_after_rain, y = d$unsafe + dy,
+           label = scales::percent(d$unsafe, accuracy = 1), size = 3.4,
+           fontface = "bold", colour = water_col[[d$water]])
+}
+ggplot(eg, aes(days_after_rain, unsafe, colour = water, group = swim_site)) +
+  annotate("rect", xmin = -0.4, xmax = 0.4, ymin = -Inf, ymax = Inf,
+           fill = pal$base) +
+  annotate("text", x = 0, y = 1.08, label = "rain day", size = 3.3,
+           colour = pal$ink, fontface = "bold") +
+  geom_line(linewidth = 0.9) +
+  geom_point(size = 1.8) +
+  pt("Tambourine Bay", 1, 0.09) + pt("Tambourine Bay", 3, 0.09) +
+  pt("Bondi Beach", 1, 0.09) + pt("Bondi Beach", 2, -0.09) +
+  annotate("text", x = 6.25, y = c(0.2, -0.02),
+           label = c("Tambourine Bay", "Bondi Beach"), hjust = 0, size = 3.5,
+           fontface = "bold", colour = c(pal$accent, pal$teal)) +
+  scale_x_continuous(breaks = 0:6, expand = expansion(add = c(0.4, 2.4))) +
+  scale_y_continuous(labels = scales::percent, breaks = c(0, 0.5, 1),
+                     limits = c(-0.06, 1.13)) +
+  scale_colour_manual(values = water_col, guide = "none") +
+  labs(x = "days since ≥ 20 mm of rain  →  x_minor",
+       y = NULL, title = "% of samples above guideline  →  y_minor") +
   theme_bw(base_size = 13) +
-  theme(panel.grid = element_blank(),
-        axis.title.x = role(pal$teal), axis.title.y = role(pal$teal),
-        axis.text = element_text(colour = pal$teal),
-        panel.border = element_rect(colour = pal$teal, linewidth = 0.8),
-        plot.background = element_rect(fill = "white", colour = NA))
-# right: inside one glyph, where the temporal coordinates are the *minor* axes
-p_minor <- ggplot(site1, aes(days_after_rain, unsafe)) +
-  geom_line(colour = pal$accent, linewidth = 0.8) +
-  geom_point(colour = pal$accent, size = 1.2) +
-  scale_x_continuous(breaks = 0:7) +
-  scale_y_continuous(labels = scales::percent, limits = c(0, 1)) +
-  labs(x = "days since rain  →  x_minor",
-       y = "% unsafe  →  y_minor") +
-  theme_bw(base_size = 13) +
-  theme(panel.grid = element_blank(),
-        axis.title.x = role(pal$accent), axis.title.y = role(pal$accent),
-        axis.text = element_text(colour = pal$accent),
+  theme(panel.grid.minor = element_blank(),
+        panel.grid.major.x = element_blank(),
+        axis.title = element_text(colour = pal$ink, face = "bold"),
+        plot.title = element_text(colour = pal$ink, face = "bold", size = 13),
+        plot.title.position = "plot",
         panel.border = element_rect(colour = pal$ink, linewidth = 0.8),
-        plot.background = element_rect(fill = "white", colour = NA),
-        # same shape as the glyph box on the map
-        aspect.ratio = gh / (gw * cos(cy * pi / 180)))
-p_major + p_minor + plot_layout(widths = c(1, 1.5))
+        plot.background = element_rect(fill = "white", colour = NA))
 ```
 
 ::: {.caption}
-Tambourine Bay's location gives the **major** coordinates; its recovery
-curve after rain gives the **minor** coordinates drawn inside its box.
+The two boxed glyphs below, full size: **Tambourine Bay** (inner
+harbour) stays polluted for three days; **Bondi Beach** clears by day 2.
 :::
 
-Because the glyph is an ordinary ggplot2 layer, it pieces together with
-other layers. The key parts of the code (simplified):
+`geom_glyph()` is a ggplot2 layer, so it combines with other layers
+(a base map, site names), scales and themes:
+
+```{=typst}
+#hl("x_major", "y_major", "x_minor", "y_minor", "geom_glyph")[
+```
 
 ```r
-ggplot(beach,
-       aes(x_major = long, y_major = lat,
-           x_minor = days_after_rain,
-           y_minor = unsafe,
-           colour = water)) +
-  geom_sf(data = sydney, inherit.aes = FALSE) + # map
-  geom_glyph_box(width = 0.028, height = 0.012) +
-  geom_glyph(width = 0.028, height = 0.012) +
-  scale_colour_manual(values = ...)
+ggplot(beach, aes(x_major = long, y_major = lat,
+                  x_minor = days, y_minor = percentage)) +
+  geom_sf(..., inherit.aes = FALSE) +     # base map
+  geom_glyph_box(...) + geom_glyph(...) + # cubble glyphs
+  geom_text(...) +                        # site names
+  theme(...)                              # theme
+```
+
+```{=typst}
+]
 ```
 
 ```{r}
 #| label: cubble-map
 #| fig-width: 5.2
-#| fig-height: 5.9
-ggplot(rec, aes(x_major = long, y_major = lat, x_minor = days_after_rain, y_minor = unsafe,
-                colour = water, group = swim_site)) +
-  geom_sf(data = land, fill = pal$base, colour = NA, inherit.aes = FALSE) +
+#| fig-height: 6.2
+
+# glyph map: tightest extent around the glyph boxes and the names under them
+xl <- range(beach$long) + c(-2, 2) * gw / 2
+yl <- range(beach$lat) + c(-0.011, gh / 2 + 0.002)
+eg_box <- distinct(eg, long, lat)
+
+ggplot(beach, aes(x_major = long, y_major = lat, x_minor = days_after_rain, y_minor = unsafe,
+                colour = water, group = swim_site)) +  
+  geom_sf(data = sf::st_crop(sydney, xmin = xl[1], xmax = xl[2], ymin = yl[1], ymax = yl[2]),
+          fill = pal$base, colour = NA, inherit.aes = FALSE) +   # land, cut to the panel
   geom_glyph_box(width = gw, height = gh, colour = pal$grid, fill = "white",
                  alpha = 0.08, linewidth = 0.2) +
   geom_glyph(width = gw, height = gh, linewidth = 0.55, key_glyph = "path") +
-  annotate("rect", xmin = cx - gw / 2, xmax = cx + gw / 2,
-           ymin = cy - gh / 2, ymax = cy + gh / 2,
+  annotate("rect", xmin = eg_box$long - gw / 2, xmax = eg_box$long + gw / 2,
+           ymin = eg_box$lat - gh / 2, ymax = eg_box$lat + gh / 2,
            fill = NA, colour = pal$ink, linewidth = 0.9) +
+  geom_text(data = distinct(beach, swim_site, long, lat),     # site names under glyphs
+            aes(x = long, y = lat - 0.009, label = swim_site),
+            inherit.aes = FALSE, size = 3.2, colour = pal$ink) +
   scale_colour_manual(values = water_col, name = NULL) +
   guides(colour = guide_legend(override.aes = list(linewidth = 1.5))) +
-  coord_sf(xlim = xl, ylim = yl, expand = FALSE) +
-  theme_poster(14)
+  coord_sf(xlim = xl, ylim = yl, expand = FALSE, clip = "off") +
+  theme_poster(14) +
+  theme(panel.background = element_rect(fill = "#e8f3ff", colour = NA))  # sea
 ```
 
 ::: {.takeaway}
-- **Ocean beaches** spike the day after a storm (46% of samples
-  unsafe), then clear within 2 days (24%).
-- **Harbour** sites are worse and slower: 73% unsafe the day after, still
-  65% two days later, especially in the inner-harbour coves.
+- **Ocean & outer harbour** clear up by day 2 after a storm while **Inner harbour** needs until day 4–5.
+- **Coogee** and **Rose Bay**, graded Poor by NSW Beachwatch, stay high.
 :::
 :::
 
@@ -297,24 +304,28 @@ ggplot(rec, aes(x_major = long, y_major = lat, x_minor = days_after_rain, y_mino
 :::
 
 ::: {.card accent="orange"}
-## [2026]{.yr} sugarglider: interval segments
+## [2026]{.yr} `sugarglider`: interval segments
 
-A line glyph shows **one value** per time point. Many summaries are an
-**interval**: a lower and an upper value of the same measurement, such as
-the daily low and high, or the quietest and busiest month.
-**sugarglider** adds aesthetics for the two ends of the interval, which
-share one scale inside each glyph.
+A line glyph shows **one value** per time point, but many summaries are
+an **interval**: a low and a high value of the same measurement, such as
+the daily minimum and maximum temperature. 
 
+`geom_glyph_segment()` draws one bar per time point. Here: the monthly average daily low to high temperature at Australian weather stations, 2020.
 
-**Segments** draw one bar per time point. Australian weather stations,
-monthly average daily low (bottom) to high (top), 2020
-[(`sugarglider::aus_temp`)]{.cite}:
+```{=typst}
+#hl("y_minor", "yend_minor", "geom_glyph_segment")[
+```
 
 ```r
-ggplot(aus_temp, aes(x_major = long, y_major = lat,
-                     x_minor = month,
-                     y_minor = tmin, yend_minor = tmax)) +
-  add_glyph_boxes() + geom_glyph_segment()
+aus_temp |> 
+  ggplot(aes(x_major = long, y_major = lat, x_minor = month,
+             y_minor = tmin, yend_minor = tmax)) +
+  add_glyph_boxes() + geom_glyph_segment() + 
+  ...
+```
+
+```{=typst}
+]
 ```
 
 ```{r}
@@ -392,7 +403,7 @@ nights to 39 °C summer days, with 14–18 °C between day and night.
 :::
 
 ::: {.card accent="orange"}
-## [2026]{.yr} sugarglider: interval ribbons
+## [2026]{.yr} `sugarglider`: interval ribbons
 
 **Ribbons** fill the band between the lower and upper values. Melbourne
 train stations, hourly weekday passengers, 2023–24
