@@ -144,63 +144,114 @@ library(leaflet)
 
 train_hr <- train |>
   mutate(hour = as.numeric(substr(as.character(hour), 1, 2)))
+# Stations shown: the City Loop and the inner stations around it, west to
+# Footscray, north-east to Victoria Park, south-east to Prahran and Burnley.
+city_loop <- c(
+  "Flinders Street", "Southern Cross", "Flagstaff", "Melbourne Central",
+  "Parliament"
+)
+show <- c(
+  city_loop,
+  "Footscray", "South Kensington", "Macaulay", "North Melbourne", # west
+  "Jolimont", "North Richmond", "Victoria Park", # north-east
+  "Richmond", "South Yarra", "Prahran", # south
+  "Burnley" # east
+)
+poster_stations <- c("Melbourne Central", "South Yarra") # enlarged on poster
 stations <- train_hr |>
   distinct(station_name, long, lat) |>
-  filter(long > 144.80, long < 145.15, lat > -37.95, lat < -37.70)
+  filter(station_name %in% show)
 
-# One shared scale for all stations: let sugarglider rescale every station
-# together (global_rescale = TRUE, all glyphs placed at the same spot), then
-# draw each station's rescaled ribbon as its own icon.
-shared <- layer_data(
-  ggplot(train_hr, aes(
-    x_major = 0, y_major = 0, x_minor = hour,
-    ymin_minor = min_weekday, ymax_minor = max_weekday,
-    group = station_name
-  )) +
-    geom_glyph_ribbon(width = 2, height = 2, global_rescale = TRUE)
-) |>
-  mutate(station_name = levels(factor(train_hr$station_name))[group])
+zoom <- 13 # 1 km scale bar
+icon_w <- 60
+icon_h <- 40 # icon size (px)
 
-make_icon <- function(s, border = "#9CADB7", lw = 1) {
-  p <- shared |>
+# Nudge crowded inner-city glyphs so they don't overlap (in screen px at
+# this zoom; + is right / up). Only the drawing position moves.
+nudge <- tibble::tribble(
+  ~station_name, ~dx, ~dy,
+  "Melbourne Central", 0, 30,
+  "Flagstaff", -62, -6,
+  "Southern Cross", -20, -30,
+  "Flinders Street", 18, -10,
+  "Parliament", 6, -8,
+  "Jolimont", 24, -10,
+  "Richmond", 0, -14,
+  "North Melbourne", -14, 14
+)
+px_deg <- 360 / (256 * 2^zoom) # degrees longitude per pixel
+stations <- stations |>
+  left_join(nudge, by = "station_name") |>
+  mutate(
+    long = long + coalesce(dx, 0) * px_deg,
+    lat = lat + coalesce(dy, 0) * px_deg * cos(lat * pi / 180)
+  ) |>
+  select(-dx, -dy)
+
+# Each station on its own scale: the ribbon fills the glyph box, so glyphs
+# compare the daily *shape* (commuter peaks vs all-day), not how busy a
+# station is. Hour and passengers are rescaled to [-1, 1] within each station.
+local <- train_hr |>
+  group_by(station_name) |>
+  mutate(
+    x = scales::rescale(hour, to = c(-1, 1)),
+    ymin = scales::rescale(min_weekday, to = c(-1, 1),
+                           from = range(min_weekday, max_weekday)),
+    ymax = scales::rescale(max_weekday, to = c(-1, 1),
+                           from = range(min_weekday, max_weekday))
+  ) |>
+  ungroup()
+
+make_icon <- function(s, border = "#9CADB7", lw = 2) {
+  p <- local |>
     filter(station_name == s) |>
     ggplot(aes(x, ymin = ymin, ymax = ymax)) +
     annotate("rect",
       xmin = -1, xmax = 1, ymin = -1, ymax = 1,
-      fill = "white", alpha = 0.85, colour = border, linewidth = lw
+      fill = "white", alpha = 0.35, colour = border, linewidth = lw
     ) +
-    geom_ribbon(fill = "#005F86", colour = "#005F86", alpha = 0.85) +
+    geom_ribbon(fill = "#005F86", alpha = 0.55, colour = "#005F86", linewidth = 0.4) +
     coord_cartesian(xlim = c(-1, 1), ylim = c(-1, 1), expand = FALSE) +
     theme_void()
   f <- tempfile(fileext = ".png")
-  ggsave(f, p, width = 3, height = 2, dpi = 100, bg = "transparent")
+  ggsave(f, p, width = 3, height = 1.5, dpi = 100, bg = "transparent")
   knitr::image_uri(f) # embed the image in the html
 }
 icon_uri <- vapply(stations$station_name, make_icon, character(1))
 
-m <- leaflet() |>
+m <- leaflet(options = leafletOptions(zoomControl = FALSE)) |> # no +/- buttons
   addProviderTiles("Esri.WorldGrayCanvas") |>
-  setView(lng = 144.985, lat = -37.827, zoom = 13) |>
+  # inner city at a 1 km scale (view nudged south: a row of tiles north of it is missing)
+  setView(lng = 144.9554, lat = -37.8243, zoom = zoom) |>
   addScaleBar(position = "bottomleft") |>
   addMarkers(
     lng = stations$long, lat = stations$lat,
     label = stations$station_name,
+    # station name always shown, just under the icon
+    labelOptions = labelOptions(
+      noHide = TRUE, textOnly = TRUE, direction = "bottom",
+      offset = c(0, icon_h / 2 - 10),
+      style = list(
+        "font-size" = "16px", "font-weight" = "bold", "color" = "#333F48",
+        "text-shadow" = "0 0 2px white, 0 0 2px white, 0 0 2px white"
+      )
+    ),
     icon = icons(
       iconUrl = unname(icon_uri),
-      iconWidth = 66, iconHeight = 44
+      iconWidth = icon_w, iconHeight = icon_h
     )
   )
 
-# the two stations enlarged on the poster: orange border, drawn on top
-hl <- stations |> filter(station_name %in% c("Melbourne Central", "South Yarra"))
+# the two stations enlarged on the poster: dark border (as on the other maps), drawn on top
+hl <- stations |> filter(station_name %in% poster_stations)
 hl_icons <- vapply(hl$station_name, make_icon, character(1),
-  border = "#BF5700", lw = 4
+  border = "#333F48", lw = 8
 )
 m <- m |> addMarkers(
-  lng = hl$long, lat = hl$lat, label = hl$station_name,
+  lng = hl$long, lat = hl$lat,
   icon = icons(
     iconUrl = unname(hl_icons),
-    iconWidth = 66, iconHeight = 44
+    iconWidth = icon_w, iconHeight = icon_h
   ),
   options = markerOptions(zIndexOffset = 1000)
 )
@@ -211,5 +262,5 @@ htmlwidgets::saveWidget(m, file.path(normalizePath("figures"), "leaflet-train.ht
 )
 # Screenshot used on the poster (macOS, headless Chrome):
 #   "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless \
-#     --hide-scrollbars --force-device-scale-factor=2 --virtual-time-budget=15000 --window-size=860,470 \
+#     --hide-scrollbars --force-device-scale-factor=2 --virtual-time-budget=15000 --window-size=690,488 \
 #     --screenshot=figures/leaflet-train.png file://$PWD/figures/leaflet-train.html

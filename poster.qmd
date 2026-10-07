@@ -184,7 +184,7 @@ ggplot(nasa_thin) +
 ::: {.card}
 ## [2024]{.yr} `cubble`: glyph maps in ggplot2
 
- **how long after a storm is it safe to swim in Sydney?** 
+ **How long after a storm is it safe to swim in Sydney?** 
  
  Each water sample (2015–2025) is matched to the most recent day with ≥ 20 mm of rain (a "very heavy rain" day in the ETCCDI climate-extremes indices), giving the number of days since rain when it was taken (0–6). For each site and each day, we take the percentage of samples above the bacteria guideline: 40 enterococci/100 mL, the limit for the best water-quality grade in Australia's recreational-water guidelines [(NHMRC, 2008)]{.cite}
 [(TidyTuesday 2025-05-20)]{.cite}.
@@ -405,12 +405,16 @@ nights to 39 °C summer days, with 14–18 °C between day and night.
 ::: {.card accent="orange"}
 ## [2026]{.yr} `sugarglider`: interval ribbons
 
-**Ribbons** fill the band between the lower and upper values. Melbourne
-train stations, hourly weekday passengers, 2023–24
-[(`sugarglider::train`)]{.cite}, on an interactive **leaflet** map. For
-each hour, the **lower edge** is the passenger count in the quietest
-month and the **upper edge** in the busiest month. Each station's glyph
-is saved as an image and added as a leaflet marker (simplified):
+**Ribbons** fill the band between a lower and an upper value. Hourly
+weekday passengers at 16 inner Melbourne train stations, 2023–24
+[(`sugarglider::train`)]{.cite}: for each hour, the **lower edge** is the
+quietest month and the **upper edge** the busiest. Each station's glyph
+is drawn on its own, saved as an image and added as a **leaflet** marker
+with its name (simplified):
+
+```{=typst}
+#hl("ymin_minor", "ymax_minor", "geom_glyph_ribbon")[
+```
 
 ```r
 glyph <- ggplot(station,
@@ -420,8 +424,12 @@ glyph <- ggplot(station,
 ggsave("glyph.png", glyph, bg = "transparent")
 
 leaflet() |> addProviderTiles("Esri.WorldGrayCanvas") |>
-  addMarkers(lng, lat, label = name,
-             icon = makeIcon("glyph.png", 66, 44))
+  addMarkers(lng, lat, icon = makeIcon("glyph.png", 54, 36),
+             label = name, labelOptions(noHide = TRUE))
+```
+
+```{=typst}
+]
 ```
 
 ```{r}
@@ -430,8 +438,8 @@ tr <- sugarglider::train |>
   mutate(hr = as.numeric(substr(as.character(hour), 1, 2)))
 ```
 
-All stations share one scale, so glyph height shows how busy a station
-is; zoom in to separate crowded glyphs and hover for station names:
+Because each glyph is drawn alone, every station gets **its own scale**:
+the glyphs compare the shape of the day, not how busy a station is.
 
 ![](figures/leaflet-train.png){width=100%}
 
@@ -446,28 +454,29 @@ zoom <- tr |> filter(station_name %in% c("Melbourne Central", "South Yarra")) |>
                                c("Melbourne Central", "South Yarra")))
 lab <- zoom |> filter(station_name == "Melbourne Central", hr == 14)
 ggplot(zoom, aes(hr, ymin = min_weekday, ymax = max_weekday)) +
-  geom_ribbon(fill = pal$teal, colour = pal$teal, alpha = 0.8) +
+  geom_ribbon(fill = pal$teal, alpha = 0.55, colour = pal$teal, linewidth = 0.4) +
   geom_text(data = lab, aes(x = hr, y = max_weekday, label = "busiest month"),
             vjust = -0.6, size = 3.4, colour = pal$ink, inherit.aes = FALSE) +
   geom_text(data = lab, aes(x = hr, y = min_weekday, label = "quietest month"),
             vjust = 1.6, size = 3.4, colour = pal$ink, inherit.aes = FALSE) +
   facet_wrap(~station_name, scales = "free_y") +
   scale_y_continuous(expand = expansion(mult = c(0.3, 0.35))) +
-  scale_x_continuous(breaks = c(6, 12, 18, 23),
-                     labels = c("6am", "noon", "6pm", "11pm")) +
+  scale_x_continuous(breaks = c(6, 12, 18),
+                     labels = c("6am", "12pm", "6pm")) +
   labs(x = NULL, y = "passengers/hr") +
   theme_bw(base_size = 13) +
   theme(panel.grid.minor = element_blank(),
         strip.background = element_blank(),
         strip.text = element_text(face = "bold", colour = pal$ink),
-        panel.border = element_rect(colour = pal$accent, linewidth = 0.8),
+        panel.border = element_rect(colour = pal$grid, linewidth = 0.5),
         plot.background = element_rect(fill = "white", colour = NA))
 ```
 
 ::: {.takeaway}
-City Loop stations carry by far the most passengers. On their own axes,
-suburban stations such as **South Yarra** show two sharp **commuter
-peaks**, while **Melbourne Central** is as busy at midday as at the peaks.
+- Most stations follow the **working day**: peaks at 8am and 5pm.
+- **Melbourne Central** is busy all day, busier at midday than at 8am.
+- **Jolimont**, **Richmond** and **Burnley** jump at 10pm in some months:
+  event crowds from the MCG and sports precinct.
 :::
 :::
 
@@ -477,7 +486,7 @@ peaks**, while **Melbourne Central** is as busy at midday as at the peaks.
 ```{r}
 #| label: qr
 #| fig-width: 5.2
-#| fig-height: 1.7
+#| fig-height: 1.4
 qr_plot <- function(url, label) {
   m <- qrcode::qr_code(url) |> unclass()
   df <- expand.grid(y = rev(seq_len(nrow(m))), x = seq_len(ncol(m)))
@@ -486,7 +495,7 @@ qr_plot <- function(url, label) {
     geom_tile(fill = pal$ink) +
     coord_fixed() +
     labs(title = label) +
-    theme_void(base_size = 11) +
+    theme_void(base_size = 9) +
     theme(plot.title = element_text(hjust = 0.5, face = "bold",
                                     colour = pal$ink, lineheight = 0.9))
 }
@@ -515,5 +524,4 @@ Po, Yang, Zhang & Cook (2026). sugarglider: Create glyph-maps of
 spatiotemporal data. *The R Journal* 18(3), 286–304.
 [doi:10.32614/RJ-2026-050](https://doi.org/10.32614/RJ-2026-050)
 
-Leaflet tiles: Esri. Beach data: [TidyTuesday 2025-05-20](https://github.com/rfordatascience/tidytuesday/tree/main/data/2025/2025-05-20).
 :::
